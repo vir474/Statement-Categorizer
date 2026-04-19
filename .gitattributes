@@ -1,0 +1,19 @@
+# Normalize line endings to LF on all platforms (prevents Windows CRLF issues)
+* text=auto eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.env text eol=lf
+*.conf text eol=lf
+
+# Binary files — never touch line endings
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
