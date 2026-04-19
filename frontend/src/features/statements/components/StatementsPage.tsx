@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import type { Statement } from "@/types";
-import { useDeleteStatement, useStatements, useUploadStatement, STATEMENTS_KEY } from "../hooks/useStatements";
+import { useDeleteStatement, useReparseStatement, useStatements, useUploadStatement, STATEMENTS_KEY } from "../hooks/useStatements";
 
 function StatusBadge({ status }: { status: Statement["parse_status"] }) {
   if (status === "done") return <Badge variant="success"><CheckCircle size={10} className="mr-1" />Imported</Badge>;
@@ -23,6 +23,7 @@ export function StatementsPage() {
   const { data: statements = [], isLoading } = useStatements();
   const upload = useUploadStatement();
   const del = useDeleteStatement();
+  const reparse = useReparseStatement();
   const qc = useQueryClient();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -122,14 +123,26 @@ export function StatementsPage() {
                     <p className="text-xs text-destructive mt-1">{stmt.parse_error}</p>
                   )}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => del.mutate(stmt.id)}
-                  className="text-muted-foreground hover:text-destructive shrink-0"
-                >
-                  <Trash2 size={14} />
-                </Button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => reparse.mutate(stmt.id)}
+                    disabled={stmt.parse_status === "pending" || stmt.parse_status === "parsing"}
+                    className="text-muted-foreground hover:text-primary"
+                    title="Re-parse this statement"
+                  >
+                    <RefreshCw size={14} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => del.mutate(stmt.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

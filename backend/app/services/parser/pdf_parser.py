@@ -43,6 +43,16 @@ _SKIP_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Keywords that identify bank (checking/savings) statements vs credit card statements.
+# Bank statements list deposits as positive and withdrawals as negative —
+# opposite to credit card convention (where positive = charge/expense).
+_BANK_STATEMENT_RE = re.compile(
+    r"(beginning balance|deposits and additions|electronic withdrawals|"
+    r"checks paid|ending balance|daily ledger balance|total deposits|"
+    r"total withdrawals|checking account|savings account)",
+    re.IGNORECASE,
+)
+
 
 def _clean_doubled(text: str) -> str:
     """
@@ -101,6 +111,9 @@ class PDFParser(AbstractParser):
 
         with pdfplumber.open(file_path) as pdf:
             first_text = pdf.pages[0].extract_text() or ""
+            # Detect bank (checking/savings) vs credit card statement
+            is_bank_statement = bool(_BANK_STATEMENT_RE.search(first_text))
+
             # First try: look for a period/closing date line
             period_match = period_line_re.search(first_text)
             if period_match:
@@ -118,10 +131,10 @@ class PDFParser(AbstractParser):
                 if tables and any(len(t) > 3 and len(t[0]) > 2 for t in tables):
                     # Only use table extraction when tables have meaningful structure
                     for table in tables:
-                        transactions.extend(self._parse_table(table, year_hint))
+                        transactions.extend(self._parse_table(table, year_hint, is_bank_statement))
                 else:
                     text = page.extract_text() or ""
-                    transactions.extend(self._parse_text_lines(text, year_hint))
+                    transactions.extend(self._parse_text_lines(text, year_hint, is_bank_statement))
 
         period_start = min((t.date for t in transactions), default=None)
         period_end = max((t.date for t in transactions), default=None)
@@ -133,11 +146,15 @@ class PDFParser(AbstractParser):
         )
 
     def _parse_text_lines(
-        self, text: str, year_hint: Optional[int] = None
+        self, text: str, year_hint: Optional[int] = None, is_bank_statement: bool = False
     ) -> list[ParsedTransaction]:
         """
         Parse transaction lines from plain text.
         Expects lines like: "11/06 MERCHANT NAME  700.00"
+        Bank statements have two amounts per line: transaction amount + running balance.
+        For bank statements: take amounts[0] (transaction), skip amounts[1] (balance).
+        Sign convention: bank positive=deposit (income→negative in our app),
+        bank negative=withdrawal (expense→positive in our app), so flip sign for bank statements.
         """
         results = []
         for line in text.splitlines():
@@ -163,17 +180,31 @@ class PDFParser(AbstractParser):
             if not txn_date:
                 continue
 
-            # Find all amounts on the line — take the LAST one (statement total convention)
+            # Find all amounts on the line
             amount_matches = _AMOUNT_RE.findall(clean)
             if not amount_matches:
                 continue
-            amount = _parse_amount(amount_matches[-1])
+
+            if is_bank_statement:
+                # Bank format: DATE DESCRIPTION AMOUNT [BALANCE]
+                # First amount = transaction amount, last amount = running balance
+                raw_amount = amount_matches[0]
+            else:
+                # Credit card format: DATE DESCRIPTION AMOUNT
+                # Usually only one amount; take the last to be safe
+                raw_amount = amount_matches[-1]
+
+            amount = _parse_amount(raw_amount)
             if amount is None:
                 continue
 
+            if is_bank_statement:
+                # Flip sign: bank positive=deposit→income (negative), bank negative=withdrawal→expense (positive)
+                amount = -amount
+
             # Everything between the date and amount is the description
             after_date = clean[date_match.end():].strip()
-            # Remove the amount from the end of the description
+            # Remove all amounts from the description
             desc = _AMOUNT_RE.sub("", after_date).strip(" -|,.")
             if not desc:
                 desc = "Unknown"
@@ -188,7 +219,7 @@ class PDFParser(AbstractParser):
         return results
 
     def _parse_table(
-        self, table: list[list], year_hint: Optional[int] = None
+        self, table: list[list], year_hint: Optional[int] = None, is_bank_statement: bool = False
     ) -> list[ParsedTransaction]:
         """Extract transactions from a pdfplumber-detected table."""
         results = []
@@ -201,13 +232,13 @@ class PDFParser(AbstractParser):
             if not row or all(c is None or str(c).strip() == "" for c in row):
                 continue
             cells = [str(c).strip() if c else "" for c in row]
-            txn = self._cells_to_transaction(cells, year_hint)
+            txn = self._cells_to_transaction(cells, year_hint, is_bank_statement)
             if txn:
                 results.append(txn)
         return results
 
     def _cells_to_transaction(
-        self, cells: list[str], year_hint: Optional[int] = None
+        self, cells: list[str], year_hint: Optional[int] = None, is_bank_statement: bool = False
     ) -> Optional[ParsedTransaction]:
         txn_date = None
         amount = None
@@ -232,6 +263,9 @@ class PDFParser(AbstractParser):
 
         if txn_date is None or amount is None:
             return None
+
+        if is_bank_statement:
+            amount = -amount
 
         return ParsedTransaction(
             date=txn_date,

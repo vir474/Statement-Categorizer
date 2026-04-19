@@ -94,6 +94,32 @@ async def delete_statement(statement_id: int, session: SessionDep, storage: Stor
     await session.commit()
 
 
+@router.post("/{statement_id}/reparse", response_model=StatementRead)
+async def reparse_statement(
+    statement_id: int,
+    session: SessionDep,
+    storage: StorageDep,
+    background_tasks: BackgroundTasks,
+):
+    """Delete existing transactions for a statement and re-parse the original file."""
+    from sqlmodel import delete as sql_delete
+
+    stmt = await crud.statements.get_by_id(session, statement_id)
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+
+    # Delete existing transactions
+    await session.exec(sql_delete(Transaction).where(Transaction.statement_id == statement_id))  # type: ignore[call-overload]
+    await session.commit()
+
+    await crud.statements.set_status(session, stmt, "pending")
+
+    background_tasks.add_task(_parse_and_categorize, statement_id, stmt.storage_path, storage)
+
+    await session.refresh(stmt)
+    return StatementRead.model_validate(stmt)
+
+
 async def _parse_and_categorize(
     statement_id: int,
     storage_key: str,

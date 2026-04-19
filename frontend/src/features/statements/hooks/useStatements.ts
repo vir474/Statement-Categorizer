@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteStatement, fetchStatements, updateStatement, uploadStatement } from "../api";
+import { deleteStatement, fetchStatements, reparseStatement, updateStatement, uploadStatement } from "../api";
 
 export const STATEMENTS_KEY = ["statements"];
 
@@ -28,6 +28,14 @@ export function useDeleteStatement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteStatement,
+    onSuccess: () => qc.invalidateQueries({ queryKey: STATEMENTS_KEY }),
+  });
+}
+
+export function useReparseStatement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: reparseStatement,
     onSuccess: () => qc.invalidateQueries({ queryKey: STATEMENTS_KEY }),
   });
 }

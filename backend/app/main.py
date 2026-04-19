@@ -3,6 +3,7 @@ FastAPI application entry point.
 Registers all routers, configures CORS, and seeds default data on startup.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,15 +11,19 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import budgets, categories, statements, transactions
 from app.core.config import settings
-from app.core.db import init_db
+from app.core.db import _resolve_db_url, init_db
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run startup tasks before serving requests."""
-    # Create DB tables (dev mode). In production, Alembic handles migrations.
+    # Log the resolved DB path so it's always visible in the terminal
+    resolved = _resolve_db_url(settings.database_url)
+    logger.info(f"Database: {resolved}")
+
     await init_db()
-    # Seed default categories and rules if the DB is empty
     await _seed_defaults()
     yield
 

@@ -15,8 +15,11 @@ from app.services.storage.base import AbstractStorage
 
 class LocalStorage(AbstractStorage):
     def __init__(self) -> None:
-        # Resolve once at startup — relative to the backend working directory
-        self._base: Path = Path(settings.storage_local_path).resolve()
+        # Anchor relative paths to backend/ so uploads are always found
+        # regardless of which directory uvicorn is started from
+        _backend_dir = Path(__file__).parent.parent.parent.parent.resolve()
+        raw = Path(settings.storage_local_path)
+        self._base: Path = raw if raw.is_absolute() else (_backend_dir / raw).resolve()
         self._base.mkdir(parents=True, exist_ok=True)
 
     async def save(self, file_bytes: bytes, filename: str) -> str:

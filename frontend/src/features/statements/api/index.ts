@@ -23,3 +23,8 @@ export async function updateStatement(id: number, body: { account_name?: string 
 export async function deleteStatement(id: number): Promise<void> {
   await apiClient.delete(`/statements/${id}`);
 }
+
+export async function reparseStatement(id: number): Promise<Statement> {
+  const { data } = await apiClient.post(`/statements/${id}/reparse`);
+  return data;
+}

@@ -214,6 +214,23 @@ Another process is already using port 8000. Either:
 - Stop the existing backend process (see **Restarting after a crash** above)
 - Or start on a different port: `uvicorn app.main:app --reload --port 8001` and update `frontend/.env` to match: `VITE_API_URL=http://localhost:8001`
 
+### Data disappears after restarting
+
+On startup the backend prints the database path it is using, e.g.:
+
+```
+INFO:     Database: sqlite:////Users/you/statement_categorizer/backend/data/app.db
+```
+
+If this path changes between restarts, you are connecting to a different database file. This happens when uvicorn is started from different directories. Always start the backend from inside the `backend/` folder:
+
+```bash
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+The path fix is already in the code, but verifying this log line is the fastest way to confirm you are looking at the right file.
+
 ### Categories not saving / API errors
 
 Check the backend terminal for error output. Most API errors are printed there with a full traceback.
